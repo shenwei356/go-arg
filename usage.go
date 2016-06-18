@@ -4,12 +4,25 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 )
 
-// the width of the left column
-const colWidth = 25
+// AppName is the name of the app
+var AppName string
+
+//  Version of the app
+var Version string
+
+// Usage is a short introduction of this app
+var Usage string
+
+// Author information
+var Author string
+
+// Copyright information
+var Copyright string
 
 // Fail prints usage information to stderr and exits with non-zero status
 func (p *Parser) Fail(msg string) {
@@ -29,7 +42,7 @@ func (p *Parser) WriteUsage(w io.Writer) {
 		}
 	}
 
-	fmt.Fprintf(w, "usage: %s", p.config.Program)
+	fmt.Fprintf(w, "usage: %s", filepath.Base(os.Args[0]))
 
 	// write the option component of the usage message
 	for _, spec := range options {
@@ -38,7 +51,11 @@ func (p *Parser) WriteUsage(w io.Writer) {
 		if !spec.required {
 			fmt.Fprint(w, "[")
 		}
-		fmt.Fprint(w, synopsis(spec, "--"+spec.long))
+		if spec.short != "" {
+			fmt.Fprint(w, synopsis(spec, "-"+spec.short))
+		} else {
+			fmt.Fprint(w, synopsis(spec, "-"+spec.long))
+		}
 		if !spec.required {
 			fmt.Fprint(w, "]")
 		}
@@ -69,13 +86,43 @@ func (p *Parser) WriteHelp(w io.Writer) {
 		}
 	}
 
+	if AppName != "" {
+		fmt.Fprintf(w, "name:\n  %s", AppName)
+	}
+	if Version != "" {
+		fmt.Fprintf(w, " %s", Version)
+	}
+	if Usage != "" {
+		fmt.Fprintf(w, " -- %s", Usage)
+	}
+	fmt.Fprint(w, "\n\n")
+
+	if Author != "" {
+		fmt.Fprintf(w, "authors:\n  %s\n\n", Author)
+	}
+
 	p.WriteUsage(w)
 
 	// write the list of positionals
 	if len(positionals) > 0 {
 		fmt.Fprint(w, "\npositional arguments:\n")
 		for _, spec := range positionals {
-			left := "  " + spec.long
+			fmt.Fprintf(w, "  %s\n", spec.long)
+		}
+	}
+
+	// write the list of options
+	if len(options) > 0 {
+		fmt.Fprint(w, "\noptions:\n")
+		const colWidth = 10
+		for _, spec := range options {
+			// left := "  " + synopsis(spec, "--"+spec.long)
+			left := "  "
+			if spec.short != "" {
+				left += synopsis(spec, "-"+spec.short)
+			} else {
+				left += synopsis(spec, "-"+spec.long)
+			}
 			fmt.Fprint(w, left)
 			if spec.help != "" {
 				if len(left)+2 < colWidth {
@@ -88,45 +135,14 @@ func (p *Parser) WriteHelp(w io.Writer) {
 			fmt.Fprint(w, "\n")
 		}
 	}
-
-	// write the list of options
-	fmt.Fprint(w, "\noptions:\n")
-	for _, spec := range options {
-		printOption(w, spec)
+	if Copyright != "" {
+		fmt.Fprintf(w, "\ncopyright:\n  %s\n\n", Copyright)
 	}
-
-	// write the list of built in options
-	printOption(w, &spec{boolean: true, long: "help", short: "h", help: "display this help and exit"})
-}
-
-func printOption(w io.Writer, spec *spec) {
-	left := "  " + synopsis(spec, "--"+spec.long)
-	if spec.short != "" {
-		left += ", " + synopsis(spec, "-"+spec.short)
-	}
-	fmt.Fprint(w, left)
-	if spec.help != "" {
-		if len(left)+2 < colWidth {
-			fmt.Fprint(w, strings.Repeat(" ", colWidth-len(left)))
-		} else {
-			fmt.Fprint(w, "\n"+strings.Repeat(" ", colWidth))
-		}
-		fmt.Fprint(w, spec.help)
-	}
-	// If spec.dest is not the zero value then a default value has been added.
-	v := spec.dest
-	if v.IsValid() {
-		z := reflect.Zero(v.Type())
-		if (v.Type().Comparable() && z.Type().Comparable() && v.Interface() != z.Interface()) || v.Kind() == reflect.Slice && !v.IsNil() {
-			fmt.Fprintf(w, " [default: %v]", v)
-		}
-	}
-	fmt.Fprint(w, "\n")
 }
 
 func synopsis(spec *spec, form string) string {
-	if spec.boolean {
+	if spec.dest.Kind() == reflect.Bool {
 		return form
 	}
-	return form + " " + strings.ToUpper(spec.long)
+	return form + " " // + strings.ToUpper(spec.long)
 }
